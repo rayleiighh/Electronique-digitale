@@ -77,37 +77,33 @@ def init_gpio():
         led.value(0)
     print("🔌 GPIO et LEDs initialisés.")
 
-def calibrer_offset(adc, num_samples=500):
-    """Mesure l'offset DC moyen lorsque le capteur n'est pas parcouru par du courant."""
-    s = 0
-    for _ in range(num_samples):
-        s += adc.read_u16() >> 4
+def mesurer_offset(adc, samples=200):
+    total = 0
+    for _ in range(samples):
+        total += adc.read_u16() >> 4
         time.sleep_us(500)
-    return s // num_samples
+    return total // samples
 
-# Calibrage au démarrage
-offset = calibrer_offset(adc)
-
-# Fonction de mesure du courant RMS
 def mesure_courant():
-    """Mesure le courant AC RMS, avec offset calibré."""
-    CT_RATIO = 1000         # rapport primaire/secondaire du SCT-013-000
-    BURDEN   = 100.0        # Ω de la résistance de charge
-    volts_per_count = 3.3/4095
-    amps_per_count  = (volts_per_count/BURDEN) * CT_RATIO
+    CT_RATIO = 2000.0
+    BURDEN   = 62.0
+    vpc      = 3.3 / 4095
+    apc      = (vpc / BURDEN) * CT_RATIO
 
-    num_samples, sum_sq = 500, 0
-    for _ in range(num_samples):
-        raw = adc.read_u16() >> 4
-        diff = raw - offset
+    # Calibrage offset à vide
+    OFFSET = mesurer_offset(adc)
+
+    sum_sq = 0
+    for _ in range(500):
+        raw  = adc.read_u16() >> 4
+        diff = raw - OFFSET
         sum_sq += diff * diff
         time.sleep_us(1000)
 
-    rms_counts = math.sqrt(sum_sq / num_samples)
-    Irms = rms_counts * amps_per_count
-    overload = (Irms > 80.0)
-    print(f"📏 Fin mesure → {Irms:.3f} A RMS (surcharge={'OUI' if overload else 'NON'})")
-    return Irms, overload
+    rms_counts = math.sqrt(sum_sq / 500)
+    Irms       = rms_counts * apc
+    return Irms, (Irms > 80.0)
+
 
 # ========= Connexion Wi‑Fi =====================================
 def connecter_wifi(ssid, password, timeout=20):
